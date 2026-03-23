@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brighton Call — Knowledge Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0e1a; overflow: hidden; font-family: 'DM Sans', sans-serif; color: #e2e8f0; }
+svg { display: block; }
+#panel {
+  position: fixed; right: 0; top: 0; width: 400px; height: 100vh;
+  background: linear-gradient(180deg, #0f1629 0%, #131b30 100%);
+  border-left: 1px solid rgba(56,189,248,0.15);
+  padding: 28px 24px; overflow-y: auto;
+  transform: translateX(100%); transition: transform 0.35s cubic-bezier(0.16,1,0.3,1);
+  z-index: 100; box-shadow: -20px 0 60px rgba(0,0,0,0.5);
+}
+#panel.open { transform: translateX(0); }
+#panel-close {
+  position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
+  border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
+  color: #94a3b8; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+#panel-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
+#panel-tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; padding: 3px 10px; border-radius: 6px; display: inline-block; }
+#panel-title { font-family: 'DM Serif Display', serif; font-size: 1.45rem; color: #fff; margin-bottom: 14px; line-height: 1.3; }
+#panel-body { font-size: 0.92rem; line-height: 1.7; color: #cbd5e1; }
+#panel-body strong { color: #fff; }
+#panel-body .dialog { border-left: 3px solid #38bdf8; padding: 10px 14px; margin: 12px 0; background: rgba(56,189,248,0.06); border-radius: 0 8px 8px 0; font-size: 0.88rem; }
+#panel-body .dialog-red { border-left-color: #f87171; background: rgba(248,113,113,0.06); }
+#panel-body .dialog-green { border-left-color: #34d399; background: rgba(52,211,153,0.06); }
+#panel-body .label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+#panel-body .label.blue { color: #38bdf8; }
+#panel-body .label.red { color: #f87171; }
+#panel-body .label.green { color: #34d399; }
+#panel-body ul { padding-left: 18px; margin: 8px 0; }
+#panel-body li { margin-bottom: 5px; }
+#controls {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 50; flex-wrap: wrap; justify-content: center;
+}
+.ctrl-btn {
+  padding: 9px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(15,22,41,0.85); backdrop-filter: blur(12px);
+  color: #94a3b8; font-size: 0.8rem; font-family: 'DM Sans', sans-serif;
+  font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.ctrl-btn:hover { border-color: rgba(56,189,248,0.4); color: #e2e8f0; }
+.ctrl-btn.active { background: rgba(56,189,248,0.15); border-color: rgba(56,189,248,0.4); color: #38bdf8; }
+#header { position: fixed; top: 16px; left: 20px; z-index: 50; }
+#header h1 { font-family: 'DM Serif Display', serif; font-size: 1.4rem; color: #fff; }
+#header p { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
+#legend { position: fixed; top: 16px; right: 20px; z-index: 50; display: flex; flex-wrap: wrap; gap: 10px; max-width: 560px; justify-content: flex-end; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: #64748b; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+#force-control {
+  position: fixed; bottom: 62px; left: 50%; transform: translateX(-50%);
+  z-index: 50; display: flex; align-items: center; gap: 12px;
+  background: rgba(15,22,41,0.85); backdrop-filter: blur(12px);
+  padding: 8px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
+}
+#force-control label { font-size: 0.72rem; color: #64748b; font-weight: 600; }
+#force-control input[type="range"] { width: 120px; accent-color: #38bdf8; }
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 200;
+  background: rgba(15,22,41,0.95); border: 1px solid rgba(56,189,248,0.25);
+  border-radius: 8px; padding: 8px 14px; font-size: 0.82rem; color: #e2e8f0;
+  max-width: 240px; opacity: 0; transition: opacity 0.15s; backdrop-filter: blur(12px);
+}
+@media (max-width: 700px) { #panel { width: 100vw; } #legend { display: none; } }
+</style>
+</head>
+<body>
+<div id="header"><h1>Brighton Call &middot; Knowledge Graph</h1><p>Drag nodes &middot; Click to explore &middot; Scroll to zoom</p></div>
+<div id="legend"></div>
+<div id="force-control">
+  <label>GRAVITY</label><input type="range" id="force-slider" min="1" max="100" value="30">
+  <label>REPULSION</label><input type="range" id="repulsion-slider" min="200" max="3000" value="900">
+</div>
+<div id="controls"></div>
+<div id="tooltip"></div>
+<div id="panel"><button id="panel-close" onclick="closePanel()">&times;</button><div id="panel-tag"></div><div id="panel-title"></div><div id="panel-body"></div></div>
+<svg id="graph"></svg>
+<script>
+const C={core:{color:"#fff",label:"Core"},family:{color:"#e879f9",label:"The 3 Daughters"},strategy:{color:"#38bdf8",label:"Call Strategy"},solution:{color:"#34d399",label:"Your Solutions"},objection:{color:"#f87171",label:"Objections"},leverage:{color:"#fbbf24",label:"Your Leverage"},tier1:{color:"#a78bfa",label:"Tier 1: Malaysia & NZ"},tier2:{color:"#60a5fa",label:"Tier 2: Canada & AU"},tier3:{color:"#fb923c",label:"Tier 3: Germany & Ireland"},tier4:{color:"#94a3b8",label:"Tier 4: NL & Turkey"},fact:{color:"#f472b6",label:"Key Facts"}};
+const N=[
+{id:"center",label:"Konna's\nDaughters\nFuture",cat:"core",r:48,detail:{tag:"The Mission",title:"Three Daughters \u2014 One Family Strategy",body:"<p>This is a <strong>family educational strategy</strong> spanning 2026\u20132031 for all three daughters.</p><p>The UK Visa Brake blocks Sudanese student visas from <strong>26 March 2026</strong>. It affects all three timelines.</p><p><strong>Whatever pathway you establish now sets the precedent for all three.</strong></p><p>Drag nodes. Click to explore. Adjust gravity below.</p>"}},
+{id:"daughters",label:"The Three\nDaughters",cat:"family",r:38,detail:{tag:"Family",title:"Three Daughters \u2014 Three Timelines",body:"<p>Every decision creates the pathway for all three:</p><p><strong style='color:#e879f9'>Eldest</strong> \u2014 Graduating high school <strong>June 2026</strong>. Needs uni entry Sept/Oct 2026. Most urgent next.</p><p><strong style='color:#e879f9'>Middle</strong> \u2014 Currently in Foundation Year at Brighton online. Directly hit by visa brake <strong>now</strong>.</p><p><strong style='color:#e879f9'>Youngest</strong> \u2014 Graduating <strong>2028</strong>. 2 years to establish a pathway.</p><p style='margin-top:12px'><strong>Key insight:</strong> You represent THREE students over 5+ years. Any institution that earns your trust gets a long-term relationship. This is powerful leverage.</p>"}},
+{id:"d1",label:"Eldest\nGrad Jun '26",cat:"family",r:30,detail:{tag:"Daughter 1 \u00b7 Most Urgent Next",title:"Eldest \u2014 Graduating June 2026",body:"<p><strong>Timeline:</strong> Finishes high school June 2026. Needs university by September 2026.</p><p><strong>Visa brake already in effect.</strong> UK path closed for her too.</p><p><strong>Implication:</strong> Whatever pathway you build for Daughter 2 becomes the ready-made route for Daughter 1. A foundation year at Nottingham Malaysia or Massey NZ for Sept 2026 intake is still possible.</p><div class='dialog'><div class='label blue'>FOR THE CALL</div><p>\"I have three daughters. The eldest graduates this June. Whatever we solve, it needs to work for all three.\"</p></div>"}},
+{id:"d2",label:"Middle\nBrighton FY",cat:"family",r:30,detail:{tag:"Daughter 2 \u00b7 Current Crisis",title:"Middle Daughter \u2014 Brighton Foundation Year",body:"<p><strong>Enrolled</strong> in online Foundation Year (Digital Pathway) for Brighton Business Management BSc(Hons).</p><p>Visa brake blocks Student visa from outside UK after 26 March. Can finish foundation online but cannot proceed to in-person BSc.</p><p><strong>Confirmation fee paid.</strong> Conditional offer accepted. Payment verified Dec 2025.</p>"}},
+{id:"d3",label:"Youngest\nGrad 2028",cat:"family",r:26,detail:{tag:"Daughter 3 \u00b7 Future Planning",title:"Youngest \u2014 Graduating 2028",body:"<p>Graduating <strong>2028</strong>. You have 2 years to establish a proven pathway.</p><ul><li>If brake lifts within 18 months, UK may reopen for her</li><li>If not, the MY/NZ/AU/CA pathway will be tested and proven</li><li>She benefits from everything you learn with her sisters</li></ul>"}},
+{id:"call",label:"Call\nStrategy",cat:"strategy",r:36,detail:{tag:"Call Flow",title:"4-Phase Conference Call",body:"<ul><li><strong>Opening (2\u20133 min):</strong> Collaborative tone. Mention ALL THREE daughters.</li><li><strong>Gathering (5\u20137 min):</strong> Understand Brighton\u2019s position</li><li><strong>Solutions (8\u201310 min):</strong> Your 4 proposals</li><li><strong>Close (3\u20135 min):</strong> Get commitments in writing</li></ul>"}},
+{id:"phase1",label:"Opening",cat:"strategy",r:24,detail:{tag:"Phase 1",title:"Set the Tone + Mention All Three",body:"<div class='dialog'><div class='label blue'>YOU SAY</div><p>\"Thank you for speaking with me. My middle daughter is enrolled in the Foundation Year. But I have three daughters \u2014 the eldest graduates this June, the youngest follows in 2028. Whatever we solve today sets the course for our entire family. We see Brighton as a long-term partner.\"</p></div>"}},
+{id:"phase2",label:"Information\nGathering",cat:"strategy",r:24,detail:{tag:"Phase 2",title:"Listen First",body:"<div class='dialog'><div class='label blue'>ASK</div><p>\"Has Brighton received Home Office guidance about enrolled foundation students?\"</p></div><div class='dialog'><div class='label blue'>ASK</div><p>\"Can Brighton still issue a CAS for affected students?\"</p></div><div class='dialog'><div class='label blue'>ASK</div><p>\"Are other students in similar situations? What approaches is the uni considering?\"</p></div>"}},
+{id:"phase3",label:"Present\nSolutions",cat:"strategy",r:24,detail:{tag:"Phase 3",title:"Your 4 Proposals",body:"<ul><li><strong>1. Deferral</strong> until brake lifts</li><li><strong>2. Kaplan credit transfer</strong> to NZ/AU</li><li><strong>3. Online/hybrid</strong> Year 1</li><li><strong>4. Formal transcript</strong> for external applications</li></ul>"}},
+{id:"phase4",label:"The\nClose",cat:"strategy",r:24,detail:{tag:"Phase 4",title:"Get Commitments in Writing",body:"<div class='dialog'><div class='label blue'>YOU SAY</div><p>\"I need something in writing confirming the options discussed. And my eldest also needs a pathway for this September \u2014 can we discuss?\"</p></div><p><strong>If no pathway:</strong> \"Which institutions does Brighton recommend for credit transfer?\"</p>"}},
+{id:"solutions",label:"Your\nSolutions",cat:"solution",r:36,detail:{tag:"Solutions",title:"4 Proposals \u2014 Click Each",body:"<p>Ordered by priority. Each connects to backup universities.</p>"}},
+{id:"sol_defer",label:"1. Deferral\n18 months",cat:"solution",r:28,detail:{tag:"Solution 1 \u00b7 HIGH",title:"Defer BSc Year 1 Until Brake Lifts",body:"<div class='dialog'><div class='label blue'>YOU SAY</div><p>\"The impact assessment suggests 18 months. Can Brighton defer BSc Year 1? She finishes foundation online. When the brake lifts, she proceeds.\"</p></div><p><strong>Family angle:</strong> \"If the brake lifts, my eldest could also apply for the following year.\"</p>"}},
+{id:"sol_kaplan",label:"2. Kaplan\nTransfer",cat:"solution",r:28,detail:{tag:"Solution 2 \u00b7 MEDIUM",title:"Credit Transfer via Kaplan Network",body:"<div class='dialog'><div class='label blue'>YOU SAY</div><p>\"Brighton and Massey NZ are both Kaplan partners. Can foundation credits transfer to Massey or other Kaplan partners (Murdoch, Adelaide, Newcastle AU)?\"</p></div><p><strong>This is your strongest transfer argument.</strong> Same network.</p><p><strong>Family angle:</strong> \"This pathway could serve all three daughters.\"</p>"}},
+{id:"sol_online",label:"3. Online\nYear 1",cat:"solution",r:26,detail:{tag:"Solution 3 \u00b7 MEDIUM",title:"Online/Hybrid Year 1",body:"<div class='dialog'><div class='label blue'>YOU SAY</div><p>\"Foundation year is already online. Any possibility of Year 1 modules online or blended? Even partial would buy critical time.\"</p></div>"}},
+{id:"sol_transcript",label:"4. Formal\nTranscript",cat:"solution",r:26,detail:{tag:"Solution 4 \u00b7 HIGH",title:"AACSB Transcript for Global Use",body:"<div class='dialog'><div class='label blue'>YOU SAY</div><p>\"Would Brighton provide a formal transcript? Your AACSB accreditation \u2014 fewer than 6% of business schools \u2014 carries enormous weight globally.\"</p></div><p><strong>Safety net:</strong> Her work must not be lost.</p>"}},
+{id:"objections",label:"Objection\nHandler",cat:"objection",r:34,detail:{tag:"Objections",title:"7 Pushbacks \u2014 Pre-Scripted",body:"<p>Click each for counter-responses.</p>"}},
+{id:"obj1",label:"\"Can't override\npolicy\"",cat:"objection",r:22,detail:{tag:"Objection 1",title:"\"Can't override government policy\"",body:"<div class='dialog dialog-red'><div class='label red'>THEY SAY</div><p>\"Visa brake is government policy.\"</p></div><div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"I'm asking Brighton to use flexibility it does have \u2014 deferrals, online, credit transfer. A bridge, not an exemption.\"</p></div>"}},
+{id:"obj2",label:"\"Can't\nissue CAS\"",cat:"objection",r:22,detail:{tag:"Objection 2",title:"\"Can't issue a CAS\"",body:"<div class='dialog dialog-red'><div class='label red'>THEY SAY</div><p>\"Can't issue CAS to affected nationals.\"</p></div><div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"She doesn't need a CAS today \u2014 she's online. She needs assurance her place is preserved through a formal deferral.\"</p></div>"}},
+{id:"obj3",label:"\"Only 1-year\ndeferral\"",cat:"objection",r:22,detail:{tag:"Objection 3",title:"\"Deferral only 1 year\"",body:"<div class='dialog dialog-red'><div class='label red'>THEY SAY</div><p>\"Standard deferral is one year.\"</p></div><div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"Extraordinary circumstance \u2014 mid-enrolment government change. Impact assessment says 18 months, aligning with one year. Exceptional deferral?\"</p></div>"}},
+{id:"obj4",label:"\"Not offered\nonline\"",cat:"objection",r:22,detail:{tag:"Objection 4",title:"\"Not online\"",body:"<div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"Even a partial online load \u2014 lecture modules \u2014 for one semester would help enormously.\"</p></div>"}},
+{id:"obj5",label:"\"Wait and\nreapply\"",cat:"objection",r:22,detail:{tag:"Objection 5",title:"\"Wait and reapply\"",body:"<div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"Waiting without commitment means I may redirect all three daughters elsewhere now. My eldest graduates in June. Can we formalise a conditional deferral?\"</p></div>"}},
+{id:"obj6",label:"\"Can't guarantee\ntransfer\"",cat:"objection",r:20,detail:{tag:"Objection 6",title:"\"Can't guarantee transfer\"",body:"<div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"I'm asking for a formal transcript with AACSB weight. That carries global recognition.\"</p></div>"}},
+{id:"obj7",label:"\"Nothing\nmore\"",cat:"objection",r:20,detail:{tag:"Objection 7",title:"\"Hands are tied\"",body:"<div class='dialog dialog-green'><div class='label green'>YOU RESPOND</div><p>\"Two final requests: formal transcript for her work, and clarity on fee-refund policies for government-caused disruption.\"</p></div>"}},
+{id:"leverage",label:"Your\nLeverage",cat:"leverage",r:34,detail:{tag:"Leverage",title:"8 Strongest Cards",body:"<p>Now with the <strong>three-daughter card</strong>. Click each.</p>"}},
+{id:"lev_family",label:"THREE\nDaughters",cat:"leverage",r:24,detail:{tag:"Leverage \u00b7 POWERFUL",title:"Three Daughters = Long-Term Revenue",body:"<p><strong>Most powerful card.</strong> Three students over 5+ years. Brighton loses one? They lose three. A Tier 1 uni gains one? They gain three.</p><div class='dialog'><div class='label blue'>YOU SAY</div><p>\"I have three daughters. The eldest graduates June, middle is with you now, youngest follows 2028. We're looking for a long-term educational partner.\"</p></div>"}},
+{id:"lev1",label:"Enrolled\nStudent",cat:"leverage",r:20,detail:{tag:"Leverage",title:"Enrolled, Not Applying",body:"<p>Started coursework. Fees paid. <strong>Duty of care.</strong></p>"}},
+{id:"lev2",label:"Financial\nInvestment",cat:"leverage",r:20,detail:{tag:"Leverage",title:"Money on the Table",body:"<p>Confirmation fee via Takwene Dubai. Tuition committed. Brighton benefits from retention.</p>"}},
+{id:"lev3",label:"AACSB\nObligations",cat:"leverage",r:20,detail:{tag:"Leverage",title:"AACSB Obligations",body:"<p>Global engagement & inclusive access. <6% hold this. Abandoning crisis students contradicts it.</p>"}},
+{id:"lev4",label:"18-Month\nTimeline",cat:"leverage",r:20,detail:{tag:"Leverage",title:"Government's Own Timeline",body:"<p>Impact assessment: <strong>18-month initial period</strong>. Time-bounded bridge.</p>"}},
+{id:"lev5",label:"CEO\nCredibility",cat:"leverage",r:20,detail:{tag:"Leverage",title:"Professional Profile",body:"<p>CEO Takwene LLC, 9 countries, Dubai branch. Zero risk profile.</p>"}},
+{id:"lev6",label:"Moral\nAuthority",cat:"leverage",r:20,detail:{tag:"Leverage",title:"Sudan's Crisis",body:"<p>Worst humanitarian crisis. Education despite displacement. Universities of Sanctuary agree.</p>"}},
+{id:"lev7",label:"Brighton's\nReputation",cat:"leverage",r:20,detail:{tag:"Leverage",title:"Reputational Incentive",body:"<p>Creative solutions = positive press. Dropping students = scrutiny.</p>"}},
+{id:"facts",label:"Key\nFacts",cat:"fact",r:28,detail:{tag:"Reference",title:"Facts to Know Cold",body:"<ul><li><strong>Date:</strong> 12:01am, 26 March 2026</li><li><strong>Affected:</strong> Student visas from outside UK: AFG, CMR, MMR, SDN</li><li><strong>Duration:</strong> 18 months (impact assessment)</li><li><strong>CAS irrelevant:</strong> Refused even with valid CAS</li><li><strong>In-UK safe:</strong> Can extend/switch inside UK</li><li><strong>Refusal recorded:</strong> On file \u2014 do NOT apply after 26 March</li></ul>"}},
+{id:"fact_bridge",label:"\"We want\na bridge\"",cat:"fact",r:24,detail:{tag:"The Line",title:"Memorise This",body:"<div class='dialog'><div class='label blue'>THE LINE</div><p>\"We are not looking to leave Brighton. We are looking for a <em>bridge</em>. My daughter chose Brighton, she's committed, we've invested. <strong>Help us find the bridge.</strong>\"</p></div>"}},
+{id:"t1",label:"Tier 1\nMY \u00b7 NZ",cat:"tier1",r:32,detail:{tag:"Tier 1",title:"Malaysia & New Zealand",body:"<p>Top priority backups. UK-accredited. <strong>Massey NZ = same Kaplan network as Brighton.</strong></p><p><strong>Eldest daughter:</strong> Sept 2026 intake achievable at Nottingham MY and Massey NZ.</p>"}},
+{id:"nottingham_my",label:"Nottingham\nMalaysia",cat:"tier1",r:24,detail:{tag:"Tier 1 \u00b7 MY",title:"University of Nottingham Malaysia",body:"<p><strong>QS #97 \u00b7 Russell Group \u00b7 Identical UK degree</strong></p><ul><li>BSc International Business Management</li><li>Foundation: RM 38k (~USD 8.1k). UG: RM 38\u201355k/yr</li><li>Fixed fees. Intakes: April & September</li><li>85+ nationalities. 2+2 transfer to UK option</li></ul><p><strong>All 3 daughters:</strong> Eldest starts Foundation Sept 2026. Middle transfers. Youngest follows 2028.</p>"}},
+{id:"heriot_my",label:"Heriot-Watt\nMalaysia",cat:"tier1",r:22,detail:{tag:"Tier 1 \u00b7 MY",title:"Heriot-Watt Malaysia",body:"<p>BSc Business Management \u2014 identical to Edinburgh. Inter-campus transfers. Foundation available.</p>"}},
+{id:"reading_my",label:"Reading\nMalaysia",cat:"tier1",r:20,detail:{tag:"Tier 1 \u00b7 MY",title:"University of Reading Malaysia",body:"<p>BSc Finance & Business Management. Henley Business School. UK-validated.</p>"}},
+{id:"massey",label:"Massey NZ\n\u2B50 Kaplan",cat:"tier1",r:26,detail:{tag:"Tier 1 \u00b7 NZ \u00b7 \u2B50 KAPLAN",title:"Massey University \u2014 Same Kaplan Network",body:"<p><strong>Auckland \u00b7 Top 3% \u00b7 KAPLAN PARTNER</strong></p><ul><li>Bachelor of Business (Management)</li><li>Kaplan Foundation \u2192 Year 1. Diploma \u2192 Year 2</li><li><strong>Post-study work: 3 years</strong></li><li>Intakes: Feb & July</li></ul><p><strong>Strongest credit-transfer argument.</strong> Both Brighton and Massey = Kaplan partners.</p>"}},
+{id:"auckland",label:"Auckland\nNZ",cat:"tier1",r:22,detail:{tag:"Tier 1 \u00b7 NZ",title:"University of Auckland",body:"<p><strong>QS #65 \u00b7 Triple-crown (AACSB+EQUIS+AMBA)</strong></p><p>Bachelor of Commerce. Foundation available. Post-study: 3 years.</p>"}},
+{id:"victoria",label:"Victoria\nWellington",cat:"tier1",r:20,detail:{tag:"Tier 1 \u00b7 NZ",title:"Victoria Uni Wellington",body:"<p>QS #215 \u00b7 Triple-crown business school. Bachelor of Commerce. Post-study: 3 years.</p>"}},
+{id:"t2",label:"Tier 2\nCA \u00b7 AU",cat:"tier2",r:28,detail:{tag:"Tier 2",title:"Canada & Australia",body:"<p>Post-study work rights. <strong>3 Kaplan partners in Australia.</strong></p>"}},
+{id:"york_ca",label:"York\nCanada",cat:"tier2",r:22,detail:{tag:"Tier 2 \u00b7 CA",title:"York (Schulich)",body:"<p>Toronto. BBA. Post-study: 3 years. Sudanese community.</p>"}},
+{id:"ubc",label:"UBC\nCanada",cat:"tier2",r:22,detail:{tag:"Tier 2 \u00b7 CA",title:"UBC",body:"<p><strong>QS #38.</strong> Bachelor of Commerce (Sauder). Post-study: 3 years.</p>"}},
+{id:"murdoch",label:"Murdoch AU\n\u2B50 Kaplan",cat:"tier2",r:24,detail:{tag:"Tier 2 \u00b7 AU \u00b7 \u2B50 KAPLAN",title:"Murdoch \u2014 Kaplan Partner",body:"<p>Perth. Bachelor of Business. Kaplan foundation \u2192 entry. Post-study: 2\u20134 years.</p>"}},
+{id:"adelaide",label:"Adelaide AU\n\u2B50 Kaplan",cat:"tier2",r:24,detail:{tag:"Tier 2 \u00b7 AU \u00b7 \u2B50 KAPLAN",title:"Adelaide \u2014 Kaplan Partner",body:"<p><strong>Group of Eight \u00b7 QS Top 100.</strong> Kaplan Foundation \u2192 Commerce. Post-study: 2\u20134 years.</p>"}},
+{id:"newcastle_au",label:"Newcastle AU\n\u2B50 Kaplan",cat:"tier2",r:22,detail:{tag:"Tier 2 \u00b7 AU \u00b7 \u2B50 KAPLAN",title:"Newcastle \u2014 Kaplan Partner",body:"<p>Kaplan Diploma \u2192 Year 2 directly. Post-study: 2\u20134 years.</p>"}},
+{id:"t3",label:"Tier 3\nDE \u00b7 IE",cat:"tier3",r:24,detail:{tag:"Tier 3",title:"Germany & Ireland",body:"<p>Germany: near-zero tuition. Ireland: English-speaking, Kaplan Dublin paths.</p>"}},
+{id:"germany",label:"German\nUnis",cat:"tier3",r:20,detail:{tag:"Tier 3 \u00b7 DE",title:"TU Munich / ESMT / Frankfurt",body:"<p>English-taught. Public: ~\u20AC300/semester. Studienkolleg \u2192 BSc. Kaplan Germany pathways.</p>"}},
+{id:"ireland",label:"Irish\nUnis",cat:"tier3",r:20,detail:{tag:"Tier 3 \u00b7 IE",title:"Trinity / UCD / DCU",body:"<p>English-speaking. Kaplan Dublin. EU post-study work.</p>"}},
+{id:"t4",label:"Tier 4\nNL \u00b7 TR",cat:"tier4",r:22,detail:{tag:"Tier 4",title:"Netherlands & Turkey",body:"<p>NL: top English business. TR: affordable, scholarships.</p>"}},
+{id:"netherlands",label:"Dutch\nUnis",cat:"tier4",r:18,detail:{tag:"Tier 4 \u00b7 NL",title:"Erasmus / Maastricht / Tilburg",body:"<p>All English-taught. RSM QS Top 10 Business. Foundation available.</p>"}},
+{id:"turkey",label:"Turkish\nUnis",cat:"tier4",r:18,detail:{tag:"Tier 4 \u00b7 TR",title:"Sabanc\u0131 / Ko\u00e7 / Bilkent",body:"<p>English-taught. Scholarships. Lower cost of living.</p>"}}
+];
+
+const L=[
+{source:"center",target:"daughters"},{source:"center",target:"call"},{source:"center",target:"solutions"},
+{source:"center",target:"objections"},{source:"center",target:"leverage"},{source:"center",target:"facts"},
+{source:"daughters",target:"d1"},{source:"daughters",target:"d2"},{source:"daughters",target:"d3"},
+{source:"d2",target:"solutions"},{source:"d1",target:"t1"},{source:"d3",target:"t1"},
+{source:"daughters",target:"lev_family"},
+{source:"call",target:"phase1"},{source:"call",target:"phase2"},{source:"call",target:"phase3"},{source:"call",target:"phase4"},
+{source:"solutions",target:"sol_defer"},{source:"solutions",target:"sol_kaplan"},
+{source:"solutions",target:"sol_online"},{source:"solutions",target:"sol_transcript"},
+{source:"phase3",target:"solutions"},
+{source:"sol_kaplan",target:"massey"},{source:"sol_kaplan",target:"murdoch"},
+{source:"sol_kaplan",target:"adelaide"},{source:"sol_kaplan",target:"newcastle_au"},
+{source:"objections",target:"obj1"},{source:"objections",target:"obj2"},{source:"objections",target:"obj3"},
+{source:"objections",target:"obj4"},{source:"objections",target:"obj5"},
+{source:"objections",target:"obj6"},{source:"objections",target:"obj7"},
+{source:"leverage",target:"lev_family"},{source:"leverage",target:"lev1"},{source:"leverage",target:"lev2"},
+{source:"leverage",target:"lev3"},{source:"leverage",target:"lev4"},{source:"leverage",target:"lev5"},
+{source:"leverage",target:"lev6"},{source:"leverage",target:"lev7"},
+{source:"facts",target:"fact_bridge"},{source:"sol_defer",target:"lev4"},
+{source:"center",target:"t1"},{source:"center",target:"t2"},{source:"center",target:"t3"},{source:"center",target:"t4"},
+{source:"t1",target:"nottingham_my"},{source:"t1",target:"heriot_my"},{source:"t1",target:"reading_my"},
+{source:"t1",target:"massey"},{source:"t1",target:"auckland"},{source:"t1",target:"victoria"},
+{source:"t2",target:"york_ca"},{source:"t2",target:"ubc"},{source:"t2",target:"murdoch"},
+{source:"t2",target:"adelaide"},{source:"t2",target:"newcastle_au"},
+{source:"t1",target:"t2"},{source:"t2",target:"t3"},{source:"t3",target:"t4"},
+{source:"t3",target:"germany"},{source:"t3",target:"ireland"},
+{source:"t4",target:"netherlands"},{source:"t4",target:"turkey"},
+{source:"lev1",target:"obj2"},{source:"obj5",target:"t1"},{source:"lev_family",target:"obj5"},
+{source:"d1",target:"nottingham_my"},{source:"sol_transcript",target:"lev3"}
+];
+
+const W=window.innerWidth,H=window.innerHeight;
+const svg=d3.select("#graph").attr("width",W).attr("height",H);
+const legendEl=document.getElementById("legend");
+Object.entries(C).forEach(([k,v])=>{const i=document.createElement("div");i.className="legend-item";i.innerHTML=`<div class="legend-dot" style="background:${v.color}"></div>${v.label}`;legendEl.appendChild(i)});
+const g=svg.append("g");
+svg.call(d3.zoom().scaleExtent([0.15,5]).on("zoom",e=>g.attr("transform",e.transform)));
+const defs=svg.append("defs");const fl=defs.append("filter").attr("id","glow");fl.append("feGaussianBlur").attr("stdDeviation","5").attr("result","blur");const fm=fl.append("feMerge");fm.append("feMergeNode").attr("in","blur");fm.append("feMergeNode").attr("in","SourceGraphic");
+
+const sim=d3.forceSimulation(N)
+.force("link",d3.forceLink(L).id(d=>d.id).distance(d=>{const s=N.find(n=>n.id===(d.source.id||d.source))?.r||20;const t=N.find(n=>n.id===(d.target.id||d.target))?.r||20;return s+t+80}))
+.force("charge",d3.forceManyBody().strength(-900))
+.force("center",d3.forceCenter(W/2,H/2).strength(0.03))
+.force("collision",d3.forceCollide().radius(d=>d.r+18))
+.force("x",d3.forceX(W/2).strength(0.015))
+.force("y",d3.forceY(H/2).strength(0.015));
+
+const link=g.append("g").selectAll("line").data(L).join("line").attr("stroke","rgba(148,163,184,0.1)").attr("stroke-width",1.3);
+const node=g.append("g").selectAll("g").data(N).join("g").call(d3.drag()
+.on("start",(e,d)=>{if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y})
+.on("drag",(e,d)=>{d.fx=e.x;d.fy=e.y})
+.on("end",(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null}));
+
+node.append("circle").attr("r",d=>d.r)
+.attr("fill",d=>d.id==="center"?"#0f172a":`${C[d.cat].color}12`)
+.attr("stroke",d=>C[d.cat].color)
+.attr("stroke-width",d=>d.r>=34?2.5:1.8)
+.attr("filter",d=>d.r>=28?"url(#glow)":null)
+.style("cursor","pointer");
+
+node.append("text").attr("text-anchor","middle").attr("dominant-baseline","central")
+.attr("fill",d=>C[d.cat].color)
+.attr("font-size",d=>d.r>=36?"13px":d.r>=26?"11px":d.r>=20?"9.5px":"8px")
+.attr("font-weight",d=>d.r>=28?"700":"600")
+.attr("font-family","DM Sans,sans-serif")
+.style("pointer-events","none")
+.each(function(d){const lines=d.label.split("\n");const el=d3.select(this);lines.forEach((l,i)=>{el.append("tspan").attr("x",0).attr("dy",i===0?`${-(lines.length-1)*0.5}em`:"1.15em").text(l)})});
+
+const tooltip=document.getElementById("tooltip");
+node.on("mouseover",function(e,d){
+d3.select(this).select("circle").transition().duration(200).attr("stroke-width",4).attr("fill",`${C[d.cat].color}28`);
+link.attr("stroke",l=>(l.source.id===d.id||l.target.id===d.id)?C[d.cat].color+"50":"rgba(148,163,184,0.05)").attr("stroke-width",l=>(l.source.id===d.id||l.target.id===d.id)?2.5:1);
+tooltip.style.opacity=1;tooltip.textContent=d.detail?.tag||d.label.replace(/\n/g," ");
+tooltip.style.left=(e.clientX+18)+"px";tooltip.style.top=(e.clientY-12)+"px";
+}).on("mousemove",e=>{tooltip.style.left=(e.clientX+18)+"px";tooltip.style.top=(e.clientY-12)+"px"})
+.on("mouseout",function(e,d){
+d3.select(this).select("circle").transition().duration(200).attr("stroke-width",d.r>=34?2.5:1.8).attr("fill",d.id==="center"?"#0f172a":`${C[d.cat].color}12`);
+link.attr("stroke","rgba(148,163,184,0.1)").attr("stroke-width",1.3);tooltip.style.opacity=0;
+});
+node.on("click",(e,d)=>{if(!d.detail)return;const p=document.getElementById("panel");const c=C[d.cat].color;
+document.getElementById("panel-tag").textContent=d.detail.tag;
+document.getElementById("panel-tag").style.cssText=`background:${c}20;color:${c};font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;padding:3px 10px;border-radius:6px;display:inline-block;margin-bottom:8px`;
+document.getElementById("panel-title").textContent=d.detail.title;
+document.getElementById("panel-body").innerHTML=d.detail.body;p.classList.add("open");
+});
+function closePanel(){document.getElementById("panel").classList.remove("open")}
+
+sim.on("tick",()=>{link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y).attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);node.attr("transform",d=>`translate(${d.x},${d.y})`)});
+
+document.getElementById("force-slider").addEventListener("input",function(){sim.force("center").strength(this.value/1000);sim.alpha(0.5).restart()});
+document.getElementById("repulsion-slider").addEventListener("input",function(){sim.force("charge").strength(-this.value);sim.alpha(0.5).restart()});
+
+const cEl=document.getElementById("controls");
+[{key:"all",label:"All"},{key:"family",label:"\uD83D\uDC68\u200D\uD83D\uDC67\u200D\uD83D\uDC67 Daughters"},{key:"strategy",label:"\uD83D\uDCCB Call Flow"},{key:"solution",label:"\uD83D\uDCA1 Solutions"},{key:"objection",label:"\uD83D\uDEE1\uFE0F Objections"},{key:"leverage",label:"\uD83D\uDCAA Leverage"},{key:"tier1",label:"\uD83E\uDD47 Tier 1"},{key:"tier2",label:"\uD83E\uDD48 Tier 2"}].forEach(f=>{
+const b=document.createElement("button");b.className=`ctrl-btn${f.key==="all"?" active":""}`;b.textContent=f.label;
+b.onclick=()=>{document.querySelectorAll(".ctrl-btn").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+if(f.key==="all"){node.style("opacity",1);link.style("opacity",1)}else{
+node.style("opacity",d=>(d.cat===f.key||d.id==="center")?1:0.08);
+link.style("opacity",l=>(l.source?.cat===f.key||l.target?.cat===f.key)?0.5:0.02)}};cEl.appendChild(b)});
+
+window.addEventListener("resize",()=>{const w=window.innerWidth,h=window.innerHeight;svg.attr("width",w).attr("height",h);sim.force("center",d3.forceCenter(w/2,h/2).strength(0.03));sim.alpha(0.3).restart()});
+</script>
+</body>
+</html>
