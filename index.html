@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;">
+  <title>Educational Pathway — University Options</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+</head>
+<body>
+  <div id="header">
+    <h1>Educational Pathway &middot; University Options</h1>
+    <p>Business Management BSc &mdash; Alternative Destinations to UK</p>
+  </div>
+  <div id="legend"></div>
+  <div id="force-control">
+    <label>GRAVITY</label>
+    <input type="range" id="force-slider" min="1" max="100" value="30">
+    <label>SPREAD</label>
+    <input type="range" id="repulsion-slider" min="200" max="3000" value="900">
+  </div>
+  <div id="controls"></div>
+  <div id="tooltip"></div>
+  <div id="panel">
+    <button id="panel-close">&times;</button>
+    <div id="panel-tag"></div>
+    <div id="panel-title"></div>
+    <div id="panel-body"></div>
+  </div>
+  <svg id="graph"></svg>
+  <script src="app.js"></script>
+</body>
+</html>
